@@ -114,11 +114,22 @@ apply_custom_style()
 def get_private_sheet_data(sheet_url):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        if not os.path.exists(CREDENTIALS_FILE):
-            st.error(f"Không tìm thấy file {CREDENTIALS_FILE}. Vui lòng tải lên để truy cập Sheet riêng tư.")
+        
+        # 1. Ưu tiên đọc từ Streamlit Secrets (Dành cho Cloud deployment)
+        if "gcp_service_account" in st.secrets:
+            creds_info = dict(st.secrets["gcp_service_account"])
+            # Khắc phục lỗi định dạng private_key (thường gặp khi copy-paste vào Secrets)
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        
+        # 2. Dự phòng đọc từ file cục bộ (Dành cho Local development)
+        elif os.path.exists(CREDENTIALS_FILE):
+            creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
+        else:
+            st.error(f"⚠️ Thiếu thông tin xác thực! Vui lòng cấu hình Streamlit Secrets hoặc file {CREDENTIALS_FILE}")
             return None
             
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
         client = gspread.authorize(creds)
         
         # Extract ID from URL
@@ -131,7 +142,7 @@ def get_private_sheet_data(sheet_url):
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"Lỗi kết nối Google Sheet riêng tư: {e}")
+        st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
         return None
 
 def score_leads_logic(df):
