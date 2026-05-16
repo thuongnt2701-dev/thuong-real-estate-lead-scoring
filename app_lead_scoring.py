@@ -53,38 +53,38 @@ apply_custom_style()
 # --- HELPER FUNCTIONS ---
 def get_private_sheet_data(sheet_url):
     try:
+        import datetime
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Thử đọc từ các file credentials có sẵn (Cách ổn định nhất)
-        possible_files = ["credentials.json", "ai-b7-credentials.json", CREDENTIALS_FILE]
-        creds = None
-        
-        for file in possible_files:
-            if os.path.exists(file):
-                with open(file, "r") as f:
-                    creds_info = json.load(f)
-                
-                # Ép định dạng PEM chuẩn (Xử lý thủ công dấu xuống dòng)
-                if "private_key" in creds_info:
-                    pk = creds_info["private_key"]
-                    pk = pk.replace("\\n", "\n").strip()
-                    creds_info["private_key"] = pk
-                
-                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        # Thử tìm file credentials (Ưu tiên file trên Github)
+        creds_file = None
+        for f_name in ["credentials.json", "ai-b7-credentials.json"]:
+            if os.path.exists(f_name):
+                creds_file = f_name
                 break
         
-        # Nếu không có file, mới thử đọc từ Streamlit Secrets
-        if not creds and "json_credentials" in st.secrets:
+        if creds_file:
+            with open(creds_file, "r") as f:
+                creds_info = json.load(f)
+            # st.toast(f"ℹ️ Sử dụng file: {creds_file}") 
+        elif "json_credentials" in st.secrets:
             creds_info = json.loads(st.secrets["json_credentials"])
-            if "private_key" in creds_info:
-                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n").strip()
-            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-            
-        if not creds:
-            st.error("⚠️ Không tìm thấy thông tin xác thực (file JSON hoặc Secrets)!")
+        else:
+            st.error(f"⚠️ Không tìm thấy credentials.json trên Github! (Giờ HT: {now_utc})")
             return None
             
+        # Làm sạch Private Key triệt để
+        if "private_key" in creds_info:
+            pk = creds_info["private_key"]
+            pk = pk.replace("\\n", "\n").replace("\\\\n", "\n").strip()
+            lines = [line.strip() for line in pk.split("\n") if line.strip()]
+            creds_info["private_key"] = "\n".join(lines)
+            
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
+        
+        # Extract ID from URL
         if "/d/" in sheet_url:
             sheet_id = sheet_url.split("/d/")[1].split("/")[0]
             sheet = client.open_by_key(sheet_id).sheet1
@@ -93,7 +93,7 @@ def get_private_sheet_data(sheet_url):
             
         return pd.DataFrame(sheet.get_all_records())
     except Exception as e:
-        st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
+        st.error(f"❌ Lỗi kết nối Google Sheet: {e} (File: {creds_file if 'creds_file' in locals() else 'None'}, Giờ HT: {now_utc})")
         return None
 
 def score_leads_logic(df):
