@@ -55,17 +55,28 @@ def get_private_sheet_data(sheet_url):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Priority: Streamlit Secrets
-        if "gcp_service_account" in st.secrets:
+        # 1. Ưu tiên đọc từ Streamlit Secrets (Dành cho Cloud)
+        if "json_credentials" in st.secrets:
+            # Đọc trực tiếp từ chuỗi JSON nguyên bản
+            creds_info = json.loads(st.secrets["json_credentials"])
+            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        elif "gcp_service_account" in st.secrets:
             creds_info = dict(st.secrets["gcp_service_account"])
             if "private_key" in creds_info:
-                creds_info["private_key"] = creds_info["private_key"].strip().replace("\\n", "\n")
+                pk = creds_info["private_key"].strip()
+                # Fix lỗi định dạng PEM
+                pk = pk.replace("\\n", "\n")
+                if "-----BEGIN PRIVATE KEY-----" not in pk:
+                    pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+                if "-----END PRIVATE KEY-----" not in pk:
+                    pk = pk + "\n-----END PRIVATE KEY-----"
+                creds_info["private_key"] = pk
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        # Fallback: Local File
+        # 2. Dự phòng đọc từ file cục bộ
         elif os.path.exists(CREDENTIALS_FILE):
             creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
         else:
-            st.error("⚠️ Thiếu thông tin xác thực!")
+            st.error("⚠️ Thiếu thông tin xác thực (Credentials)!")
             return None
             
         client = gspread.authorize(creds)
