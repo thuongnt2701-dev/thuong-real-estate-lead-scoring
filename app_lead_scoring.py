@@ -8,102 +8,42 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Lead Scoring Premium AI", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="Mino AI Lead Scoring", layout="wide", page_icon="🏠")
 
 # --- AUTHENTICATION & CREDENTIALS ---
 CREDENTIALS_FILE = "ai-b7-credentials.json"
 SKILL_FILE = "lead_scoring_skill.md"
 
-# --- PREMIUM UI/UX CUSTOM CSS ---
+# --- CUSTOM CSS (PREMIUM DESIGN) ---
 def apply_custom_style():
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
         
-        html, body, [class*="css"] {
-            font-family: 'Outfit', sans-serif;
-            background-color: #0b0e14;
+        .main { background-color: #f0f2f6; }
+        
+        /* Custom Metric Cards */
+        [data-testid="stMetricValue"] { font-size: 2.2rem; font-weight: 800; color: #1e3a8a; }
+        
+        /* Sidebar Logo */
+        .sidebar-logo { text-align: center; margin-bottom: 20px; }
+        
+        /* Audit Table Styling */
+        .audit-table {
+            background-color: #ff4b4b;
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #d32f2f;
         }
         
-        .main {
-            background: radial-gradient(circle at top right, #1e293b, #0f172a);
-            color: #f8fafc;
-        }
-        
-        /* Glassmorphism Metrics */
-        .stMetric {
-            background: rgba(255, 255, 255, 0.03) !important;
-            backdrop-filter: blur(20px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 24px !important;
-            padding: 25px !important;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        
-        .stMetric:hover {
-            transform: translateY(-5px);
-            background: rgba(255, 255, 255, 0.06) !important;
-            border-color: #3b82f6 !important;
-            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
-        }
-        
-        /* Custom Buttons */
+        /* Button Styling */
         .stButton>button {
-            background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
-            color: white;
-            border-radius: 12px;
-            border: none;
-            padding: 12px 30px;
-            font-weight: 700;
+            border-radius: 10px;
+            height: 3em;
+            font-weight: bold;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.4s ease;
-            width: 100%;
-        }
-        
-        .stButton>button:hover {
-            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
-            transform: scale(1.02);
-            background: linear-gradient(135deg, #4f46e5 0%, #2563eb 100%);
-        }
-        
-        /* Premium Banner */
-        .premium-banner {
-            background: linear-gradient(270deg, #1e3a8a, #3b82f6, #6366f1);
-            background-size: 600% 600%;
-            animation: gradient-animation 10s ease infinite;
-            padding: 60px 20px;
-            border-radius: 30px;
-            text-align: center;
-            margin-bottom: 40px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-        }
-        
-        @keyframes gradient-animation {
-            0%{background-position:0% 50%}
-            50%{background-position:100% 50%}
-            100%{background-position:0% 50%}
-        }
-        
-        .banner-title {
-            font-size: 3.5rem;
-            font-weight: 900;
-            color: white;
-            margin: 0;
-            text-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-        
-        .banner-tagline {
-            font-size: 1.2rem;
-            color: rgba(255,255,255,0.9);
-            font-weight: 400;
-            margin-top: 10px;
-        }
-
-        /* Sidebar Glass */
-        section[data-testid="stSidebar"] {
-            background-color: rgba(15, 23, 42, 0.8) !important;
-            backdrop-filter: blur(15px);
         }
     </style>
     """, unsafe_allow_html=True)
@@ -115,32 +55,27 @@ def get_private_sheet_data(sheet_url):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # 1. Ưu tiên đọc từ Streamlit Secrets (Dành cho Cloud deployment)
+        # Priority: Streamlit Secrets
         if "gcp_service_account" in st.secrets:
             creds_info = dict(st.secrets["gcp_service_account"])
-            # Khắc phục lỗi định dạng private_key (thường gặp khi copy-paste vào Secrets)
             if "private_key" in creds_info:
-                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                creds_info["private_key"] = creds_info["private_key"].strip().replace("\\n", "\n")
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        
-        # 2. Dự phòng đọc từ file cục bộ (Dành cho Local development)
+        # Fallback: Local File
         elif os.path.exists(CREDENTIALS_FILE):
             creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
         else:
-            st.error(f"⚠️ Thiếu thông tin xác thực! Vui lòng cấu hình Streamlit Secrets hoặc file {CREDENTIALS_FILE}")
+            st.error("⚠️ Thiếu thông tin xác thực!")
             return None
             
         client = gspread.authorize(creds)
-        
-        # Extract ID from URL
         if "/d/" in sheet_url:
             sheet_id = sheet_url.split("/d/")[1].split("/")[0]
             sheet = client.open_by_key(sheet_id).sheet1
         else:
             sheet = client.open_by_url(sheet_url).sheet1
             
-        data = sheet.get_all_records()
-        return pd.DataFrame(data)
+        return pd.DataFrame(sheet.get_all_records())
     except Exception as e:
         st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
         return None
@@ -149,7 +84,7 @@ def score_leads_logic(df):
     scored_results = []
     vip_keywords = ["20 tỷ", "tài chính mạnh", "biệt thự", "penthouse", "shophouse", "quận 1", "ven sông", "chủ doanh nghiệp", "nhà đầu tư", "mua sỉ", "sổ hồng riêng"]
     junk_keywords = ["nhầm số", "không có nhu cầu", "dữ liệu cũ", "hỏi giá cho vui", "chưa có ý định", "bảo hiểm", "vay vốn", "thuê bao", "không bắt máy"]
-
+    
     progress_bar = st.progress(0)
     for index, row in df.iterrows():
         desc = str(row.get('nhu_cau_mo_ta', '')).lower()
@@ -165,10 +100,7 @@ def score_leads_logic(df):
                 score -= 50
                 reasons.append(f"Junk: {kw}")
                 break
-        if ("quận 1" in desc or "trung tâm" in desc) and any(x in desc for x in ["1 tỷ", "2 tỷ", "vài trăm triệu"]):
-            score -= 50
-            reasons.append("Giá phi thực tế")
-
+        
         status = "HOT" if score >= 50 else ("JUNK" if score < 0 else "WARM")
         scored_results.append({"id": row.get('id'), "score": score, "classification": status, "reason": "; ".join(reasons) or "Bình thường"})
         progress_bar.progress((index + 1) / len(df))
@@ -181,7 +113,7 @@ def score_leads_with_ai(df, api_key):
     scored_results = []
     progress_bar = st.progress(0)
     for index, row in df.iterrows():
-        prompt = f"Analyze real estate lead:\nNhu cầu: {row.get('nhu_cau_mo_ta')}\nReturn JSON with id, score, classification, reason."
+        prompt = f"Phân tích lead BĐS:\nNhu cầu: {row.get('nhu_cau_mo_ta')}\nTrả về JSON: id, score, classification, reason."
         try:
             response = model.generate_content(prompt)
             clean_json = response.text.strip().replace("```json", "").replace("```", "")
@@ -193,45 +125,41 @@ def score_leads_with_ai(df, api_key):
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/1063/1063302.png", width=80) # Logo placeholder
-    st.title("Settings")
-    api_key = st.text_input("Gemini API Key", type="password")
-    sheet_url = st.text_input("Google Sheet URL (Private)", value="https://docs.google.com/spreadsheets/d/10yzDP9_uNPgzgMtZYIRYZXmaagXZtEXs_d6PJyB3T1A/edit")
+    st.image("https://mindx.edu.vn/images/logo.png", width=200) # Logo MindX
     st.divider()
-    st.info("💡 Hệ thống đang sử dụng Service Account để truy cập Sheet riêng tư.")
+    st.title("🛠️ Cấu hình")
+    api_key = st.text_input("Gemini API Key", type="password", help="Để trống nếu muốn dùng Logic mặc định")
+    sheet_url = st.text_input("Google Sheet URL", value="https://docs.google.com/spreadsheets/d/10yzDP9_uNPgzgMtZYIRYZXmaagXZtEXs_d6PJyB3T1A/edit")
+    st.divider()
+    st.info("🏠 Ứng dụng BĐS Premium")
 
 # --- MAIN UI ---
-st.markdown("""
-<div class="premium-banner">
-    <div class="banner-title">🏛️ MINO TECHNOLOGY</div>
-    <div class="banner-tagline">AI Lead Scoring & Automation System for Real Estate</div>
-</div>
-""", unsafe_allow_html=True)
+st.title("🏠 Hệ thống AI Lead Scoring & Automation")
+st.markdown("### Giải pháp tối ưu hóa dữ liệu khách hàng BĐS")
+st.divider()
 
-# Main Action
-if st.button("🚀 KÍCH HOẠT HỆ THỐNG PHÂN TÍCH"):
-    with st.spinner("🤖 Đang kết nối Google Sheet & Phân tích AI..."):
+# One-Click Action
+if st.button("🚀 Kích hoạt quy trình (Load & Score)", type="primary", use_container_width=True):
+    with st.spinner("🤖 Hệ thống đang làm việc..."):
         df_raw = get_private_sheet_data(sheet_url)
         if df_raw is not None:
             st.session_state['df_raw'] = df_raw
             df_scored = score_leads_with_ai(df_raw, api_key)
             st.session_state['df_final'] = pd.merge(df_raw, df_scored, on='id', how='left')
-            st.success("✅ Phân tích hoàn tất!")
+            st.success("✅ Hoàn thành quy trình!")
 
 if 'df_final' in st.session_state:
     st.divider()
-    st.subheader("📊 CHIẾN DỊCH DASHBOARD")
+    # Dashboard Metrics (3 columns as requested)
+    st.subheader("📊 Dashboard Metrics")
+    c1, c2, c3 = st.columns(3)
     counts = st.session_state['df_final']['classification'].value_counts()
-    total = len(st.session_state['df_final'])
-    
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Tổng Lead", total)
-    m2.metric("🔥 VIP (HOT)", counts.get('HOT', 0), f"{counts.get('HOT', 0)/total:.1%}")
-    m3.metric("⚖️ Tiềm năng", counts.get('WARM', 0))
-    m4.metric("🗑️ Junk", counts.get('JUNK', 0), f"-{counts.get('JUNK', 0)/total:.1%}", delta_color="inverse")
+    c1.metric("👥 Tổng khách hàng", len(st.session_state['df_final']))
+    c2.metric("🔥 Khách VIP (+50đ)", counts.get('HOT', 0))
+    c3.metric("🗑️ Khách Rác (-50đ)", counts.get('JUNK', 0))
+    st.divider()
 
-    st.write("")
-    st.subheader("📋 DANH SÁCH CHI TIẾT")
+    st.subheader("📋 Bảng duyệt dữ liệu (Human-in-the-loop)")
     edited_df = st.data_editor(
         st.session_state['df_final'], 
         use_container_width=True,
@@ -241,23 +169,33 @@ if 'df_final' in st.session_state:
         }
     )
     
-    st.write("")
-    st.subheader("📦 KẾT XUẤT BÀN GIAO")
+    st.divider()
+    st.subheader("📦 Xuất kết quả bàn giao")
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         edited_df.to_excel(writer, index=False, sheet_name='Report')
     
     st.download_button(
-        label="📥 TẢI BÁO CÁO PREMIUM (EXCEL)",
+        label="📥 Tải File Excel Bàn Giao",
         data=output.getvalue(),
-        file_name="Lead_Scoring_Report_Mino.xlsx",
+        file_name="Leads_BDS_Handover.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
-    
-    if st.button("🔄 Làm mới"):
-        del st.session_state['df_final']
-        st.rerun()
+
+# --- AUDIT TABLE SECTION ---
+with st.expander("📋 Bảng Tổng kết Kiểm tra (Audit)"):
+    st.markdown("""
+    | Thành tố | Tên File/công cụ | Mô tả |
+    | :--- | :--- | :--- |
+    | **1. Input** | Google Sheets | 500 khách hàng BĐS |
+    | **2. Agent** | Logic chấm điểm | Tự động quét mô tả |
+    | **3. Tools** | Streamlit, Pandas, GitHub | Nền tảng xây dựng |
+    | **4. Knowledge** | tieu_chi_cham_diem.txt | Quy tắc +50d / -50d |
+    | **5. Memory** | st.session_state | Ghi nhớ trạng thái |
+    | **6. Workflow** | AI -> Người duyệt -> Excel | Human Checkpoint |
+    | **7. Output** | File Excel Bàn Giao | Dữ liệu sạch cho Sales |
+    """)
 
 st.divider()
-st.caption("© 2026 Mino Technology School | Premium AI Assistant")
+st.caption("Developed with ❤️ for MindX Technology School")
