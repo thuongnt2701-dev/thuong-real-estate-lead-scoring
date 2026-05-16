@@ -55,28 +55,22 @@ def get_private_sheet_data(sheet_url):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # 1. Ưu tiên đọc từ Streamlit Secrets (Dành cho Cloud)
-        if "json_credentials" in st.secrets:
-            # Đọc trực tiếp từ chuỗi JSON nguyên bản
+        # Thử đọc từ các file credentials có sẵn (Cách ổn định nhất)
+        possible_files = ["credentials.json", "ai-b7-credentials.json", CREDENTIALS_FILE]
+        creds = None
+        
+        for file in possible_files:
+            if os.path.exists(file):
+                creds = Credentials.from_service_account_file(file, scopes=scope)
+                break
+        
+        # Nếu không có file, mới thử đọc từ Streamlit Secrets
+        if not creds and "json_credentials" in st.secrets:
             creds_info = json.loads(st.secrets["json_credentials"])
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        elif "gcp_service_account" in st.secrets:
-            creds_info = dict(st.secrets["gcp_service_account"])
-            if "private_key" in creds_info:
-                pk = creds_info["private_key"].strip()
-                # Fix lỗi định dạng PEM
-                pk = pk.replace("\\n", "\n")
-                if "-----BEGIN PRIVATE KEY-----" not in pk:
-                    pk = "-----BEGIN PRIVATE KEY-----\n" + pk
-                if "-----END PRIVATE KEY-----" not in pk:
-                    pk = pk + "\n-----END PRIVATE KEY-----"
-                creds_info["private_key"] = pk
-            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        # 2. Dự phòng đọc từ file cục bộ
-        elif os.path.exists(CREDENTIALS_FILE):
-            creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
-        else:
-            st.error("⚠️ Thiếu thông tin xác thực (Credentials)!")
+            
+        if not creds:
+            st.error("⚠️ Không tìm thấy file credentials.json trên Github hoặc cấu hình Secrets!")
             return None
             
         client = gspread.authorize(creds)
