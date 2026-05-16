@@ -53,47 +53,47 @@ apply_custom_style()
 # --- HELPER FUNCTIONS ---
 def get_private_sheet_data(sheet_url):
     try:
-        import datetime
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Thử tìm file credentials (Ưu tiên file trên Github)
+        # Thử tìm file credentials
         creds_file = None
         for f_name in ["credentials.json", "ai-b7-credentials.json"]:
             if os.path.exists(f_name):
                 creds_file = f_name
                 break
         
-        if creds_file:
-            with open(creds_file, "r") as f:
-                creds_info = json.load(f)
-            # st.toast(f"ℹ️ Sử dụng file: {creds_file}") 
-        elif "json_credentials" in st.secrets:
-            creds_info = json.loads(st.secrets["json_credentials"])
-        else:
-            st.error(f"⚠️ Không tìm thấy credentials.json trên Github! (Giờ HT: {now_utc})")
+        if not creds_file:
+            st.error("⚠️ Không tìm thấy file credentials.json trên Github!")
             return None
             
-        # Làm sạch Private Key triệt để
+        with open(creds_file, "r") as f:
+            creds_info = json.load(f)
+            
+        # --- THUẬT TOÁN TÁI CẤU TRÚC PEM (Deep Cleaning) ---
         if "private_key" in creds_info:
             pk = creds_info["private_key"]
-            pk = pk.replace("\\n", "\n").replace("\\\\n", "\n").strip()
-            lines = [line.strip() for line in pk.split("\n") if line.strip()]
-            creds_info["private_key"] = "\n".join(lines)
-            
+            import re
+            # 1. Tìm phần nội dung Base64 giữa 2 tag BEGIN và END
+            match = re.search(r'-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----', pk, re.DOTALL)
+            if match:
+                raw_base64 = match.group(1)
+                # 2. Xóa sạch mọi ký tự không phải Base64
+                clean_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', raw_base64)
+                # 3. Tái cấu trúc: Ngắt dòng 64 ký tự chuẩn PEM
+                wrapped_key = "\n".join([clean_base64[i:i+64] for i in range(0, len(clean_base64), 64)])
+                creds_info["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{wrapped_key}\n-----END PRIVATE KEY-----\n"
+
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # Extract ID from URL
         if "/d/" in sheet_url:
             sheet_id = sheet_url.split("/d/")[1].split("/")[0]
             sheet = client.open_by_key(sheet_id).sheet1
         else:
             sheet = client.open_by_url(sheet_url).sheet1
-            
         return pd.DataFrame(sheet.get_all_records())
     except Exception as e:
-        st.error(f"❌ Lỗi kết nối Google Sheet: {e} (File: {creds_file if 'creds_file' in locals() else 'None'}, Giờ HT: {now_utc})")
+        st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
         return None
 
 def score_leads_logic(df):
