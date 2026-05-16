@@ -61,16 +61,27 @@ def get_private_sheet_data(sheet_url):
         
         for file in possible_files:
             if os.path.exists(file):
-                creds = Credentials.from_service_account_file(file, scopes=scope)
+                with open(file, "r") as f:
+                    creds_info = json.load(f)
+                
+                # Ép định dạng PEM chuẩn (Xử lý thủ công dấu xuống dòng)
+                if "private_key" in creds_info:
+                    pk = creds_info["private_key"]
+                    pk = pk.replace("\\n", "\n").strip()
+                    creds_info["private_key"] = pk
+                
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 break
         
         # Nếu không có file, mới thử đọc từ Streamlit Secrets
         if not creds and "json_credentials" in st.secrets:
             creds_info = json.loads(st.secrets["json_credentials"])
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n").strip()
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
             
         if not creds:
-            st.error("⚠️ Không tìm thấy file credentials.json trên Github hoặc cấu hình Secrets!")
+            st.error("⚠️ Không tìm thấy thông tin xác thực (file JSON hoặc Secrets)!")
             return None
             
         client = gspread.authorize(creds)
