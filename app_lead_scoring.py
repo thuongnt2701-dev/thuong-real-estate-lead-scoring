@@ -206,21 +206,18 @@ def get_service_account_email():
 
 SERVICE_ACCOUNT_EMAIL = get_service_account_email()
 
-# --- GOOGLE SHEETS CONNECTOR (SECURE) ---
+# --- GOOGLE SHEETS CONNECTOR (SECURE VIA ST-GSHEETS-CONNECTION) ---
 def get_private_sheet_data(sheet_url, uploaded_creds=None):
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        from streamlit_gsheets import GSheetsConnection
         
         creds_info = None
         
         # 1. Ưu tiên file credentials do người dùng tải lên qua Sidebar
         if uploaded_creds is not None:
             creds_info = json.load(uploaded_creds)
-        # 2. Kiểm tra trong Streamlit Secrets (Cho triển khai Cloud)
-        elif "gcp_service_account" in st.secrets:
-            creds_info = dict(st.secrets["gcp_service_account"])
-        # 3. Kiểm tra file cục bộ
         else:
+            # 2. Thử tìm file cục bộ trước để tránh crash do st.secrets trống
             creds_file = None
             for f_name in ["credentials.json", "ai-b7-credentials.json"]:
                 if os.path.exists(f_name):
@@ -230,13 +227,16 @@ def get_private_sheet_data(sheet_url, uploaded_creds=None):
             if creds_file:
                 with open(creds_file, "r") as f:
                     creds_info = json.load(f)
+            else:
+                # 3. Thử kiểm tra trong Streamlit Secrets (Cho triển khai Cloud) - Bọc try-except an toàn
+                try:
+                    if "gcp_service_account" in st.secrets:
+                        creds_info = dict(st.secrets["gcp_service_account"])
+                except Exception:
+                    pass
         
-        if not creds_info:
-            st.error("⚠️ Không tìm thấy thông tin xác thực Google Service Account! Vui lòng đặt file `credentials.json` ở thư mục hiện tại hoặc tải file lên trong Sidebar.")
-            return None
-            
         # Tái cấu trúc chuỗi Private Key PEM phòng trường hợp bị lỗi xuống dòng
-        if "private_key" in creds_info:
+        if creds_info and "private_key" in creds_info:
             pk = creds_info["private_key"]
             import re
             # Dọn sạch các ký tự lạ hoặc khoảng trắng không chuẩn
@@ -248,29 +248,28 @@ def get_private_sheet_data(sheet_url, uploaded_creds=None):
                     wrapped_key = "\n".join([clean_base64[i:i+64] for i in range(0, len(clean_base64), 64)])
                     creds_info["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{wrapped_key}\n-----END PRIVATE KEY-----\n"
 
-        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        client = gspread.authorize(creds)
-        
-        # Parse Sheet ID
-        if "/d/" in sheet_url:
-            sheet_id = sheet_url.split("/d/")[1].split("/")[0]
-            sheet = client.open_by_key(sheet_id).sheet1
+        # Khởi tạo kết nối bảo mật bằng st-gsheets-connection theo chuẩn quy trình MindX
+        if creds_info:
+            conn = st.connection(
+                "gsheets",
+                type=GSheetsConnection,
+                credentials=creds_info
+            )
         else:
-            sheet = client.open_by_url(sheet_url).sheet1
+            # Nếu không tìm thấy file cục bộ, để st-gsheets-connection tự động tải từ st.secrets (dùng cho Streamlit Cloud Secrets)
+            conn = st.connection(
+                "gsheets",
+                type=GSheetsConnection
+            )
             
-        # Đọc dữ liệu
-        data = sheet.get_all_records()
-        if not data:
-            # Fallback nếu dòng đầu tiên trống hoặc không lấy được records dạng dict
-            rows = sheet.get_all_values()
-            if rows:
-                headers = rows[0]
-                data = [dict(zip(headers, row)) for row in rows[1:]]
-                
-        return pd.DataFrame(data)
+        # Đọc dữ liệu bảo mật (Sử dụng conn.read thay vì gspread)
+        # Thiết lập ttl="0" để tắt bộ nhớ cache, đảm bảo dữ liệu luôn được cập nhật thời gian thực từ Google Sheets
+        df = conn.read(spreadsheet=sheet_url, ttl="0")
+        
+        return df
     except Exception as e:
-        st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
-        st.info("💡 Mẹo bảo mật: Hãy chắc chắn rằng bạn đã bấm nút **Chia sẻ (Share)** bảng tính Google Sheet này cho Email Robot dịch vụ ở Sidebar với quyền **Người xem (Viewer)** hoặc **Người chỉnh sửa (Editor)**.")
+        st.error(f"❌ Lỗi kết nối Google Sheet qua st-gsheets-connection: {e}")
+        st.info("💡 Mẹo bảo mật: Hãy chắc chắn rằng bạn đã hoàn thành **Bước 2** trong hướng dẫn (Chia sẻ Google Sheet cho Email Robot dịch vụ ở Sidebar với quyền **Người xem (Viewer)**).")
         return None
 
 # --- RULE-BASED SCORING ENGINE ---
