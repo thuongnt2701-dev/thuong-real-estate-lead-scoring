@@ -1,8 +1,0 @@
-streamlit
-pandas
-google-generativeai
-openpyxl
-requests
-gspread
-google-auth
-st-gsheets-connection
