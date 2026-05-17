@@ -615,7 +615,25 @@ if 'df_final' in st.session_state:
     st.info("💡 Bạn có thể trực tiếp nhấp vào các ô trong bảng để điều chỉnh Phân loại (classification), Điểm số (score), hay Lý do (reason) trước khi xuất file!")
     
     # Sắp xếp để đưa các lead HOT lên trên đầu giúp dễ duyệt
-    df_sorted = df_res.sort_values(by='score', ascending=False)
+    df_sorted = df_res.sort_values(by='score', ascending=False).copy()
+    
+    # 💡 Khắc phục triệt để lỗi Type Compatibility của st.data_editor trên Streamlit Cloud (Python 3.14+)
+    if 'id' in df_sorted.columns:
+        df_sorted['id'] = df_sorted['id'].fillna('').astype(str)
+    if 'ten_khach' in df_sorted.columns:
+        df_sorted['ten_khach'] = df_sorted['ten_khach'].fillna('').astype(str)
+    if 'sdt' in df_sorted.columns:
+        df_sorted['sdt'] = df_sorted['sdt'].fillna('').astype(str)
+    if 'nhu_cau_mo_ta' in df_sorted.columns:
+        df_sorted['nhu_cau_mo_ta'] = df_sorted['nhu_cau_mo_ta'].fillna('').astype(str)
+    if 'score' in df_sorted.columns:
+        df_sorted['score'] = pd.to_numeric(df_sorted['score'], errors='coerce').fillna(10).astype(int)
+    if 'classification' in df_sorted.columns:
+        # Đưa các giá trị NaN hoặc không hợp lệ về 'WARM' để tương thích với options của SelectboxColumn
+        df_sorted['classification'] = df_sorted['classification'].fillna('WARM').astype(str)
+        df_sorted['classification'] = df_sorted['classification'].apply(lambda x: x if x in ["HOT", "WARM", "JUNK"] else "WARM")
+    if 'reason' in df_sorted.columns:
+        df_sorted['reason'] = df_sorted['reason'].fillna('Lead bình thường (nhu cầu hợp lý)').astype(str)
     
     # Hiển thị trình biên tập thông minh
     edited_df = st.data_editor(
